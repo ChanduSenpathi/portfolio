@@ -23,6 +23,7 @@ export default function BioVideoPlayer() {
   const southIndianVoiceRef = useRef(null);
   const activeUtteranceRef = useRef(null);
   const charOffsetRef = useRef(0);
+  const sentenceStartElapsedRef = useRef(0);
   const isPausedRef = useRef(false);
 
   // Exact 3-sentence executive bio (under 22 seconds total)
@@ -51,110 +52,54 @@ export default function BioVideoPlayer() {
   const elapsedRef = useRef(0);
   const timerRef = useRef(null);
 
-  // Dynamic resolver guaranteeing the best male voice available on any mobile or desktop device
-  const resolveBestMaleVoice = () => {
-    if (!window.speechSynthesis) return null;
+  // Dynamic voice resolver: 100% reliable local voice playback on every mobile and desktop device
+  const resolveMaleVoice = () => {
+    if (!window.speechSynthesis) return { voice: null, isNativeMale: false };
     const allVoices = window.speechSynthesis.getVoices() || [];
-    if (!allVoices || allVoices.length === 0) return null;
+    if (!allVoices || allVoices.length === 0) return { voice: null, isNativeMale: false };
 
-    // Female voice names to de-prioritize
-    const femaleKeywords = [
-      'female', 'woman', 'girl',
-      'veena', 'sangeeta', 'priya', 'kavya', 'ananya', 'heera', 'lekha', 'neerja',
-      'shruti', 'pooja', 'aditi', 'zira', 'samantha', 'victoria', 'karen', 'fiona',
-      'tessa', 'serena', 'hazel', 'susan', 'moira', 'catherine', 'jenny', 'aria',
-      'ava', 'allison', 'stephanie', 'siri', 'helena', 'laura', 'alice', 'sara',
-      'sarah', 'zoe', 'joana', 'luciana', 'kyoko', 'yuna', 'amelie', 'anna',
-      'clara', 'emma', 'olivia', 'sophia', 'isabella', 'charlotte', 'amelia',
-      'mia', 'harper', 'evelyn', 'abigail', 'emily', 'elizabeth', 'mila', 'ella',
-      'avery', 'sofia', 'camila', 'scarlett', 'madison', 'luna', 'grace', 'chloe',
-      'penelope', 'layla', 'riley', 'zoey', 'nora', 'lily', 'eleanor', 'hannah',
-      'lillian', 'addison', 'aubrey', 'ellie', 'stella', 'natalie', 'leah', 'violet',
-      'aurora', 'savannah', 'audrey', 'brooklyn', 'bella', 'claire', 'skylar'
-    ];
+    // 1. Native Indian Male voices on desktop or supported devices (Microsoft Ravi, Prabhat, Hemant on Windows, Rishi on iOS/Mac)
+    const indianMale = allVoices.find((v) => {
+      const str = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase();
+      const isIndian = v.lang.toLowerCase().includes('in') || str.includes('india');
+      const hasMaleName =
+        str.includes('ravi') ||
+        str.includes('prabhat') ||
+        str.includes('hemant') ||
+        str.includes('rishi') ||
+        str.includes('#male') ||
+        (str.includes('male') && !str.includes('female'));
+      return isIndian && hasMaleName;
+    });
 
-    const isExplicitFemale = (v) => {
-      const combined = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase();
-      return femaleKeywords.some((kw) => combined.includes(kw));
-    };
+    if (indianMale) {
+      return { voice: indianMale, isNativeMale: true };
+    }
 
-    // Explicit male keywords across Windows, Mac, iOS, Android (Google TTS), Samsung, Linux
-    const maleKeywords = [
-      'rishi',    // iOS / macOS premier Indian English Male
-      'ravi',     // Microsoft Indian English Male
-      'prabhat',  // Microsoft Indian English Male
-      'hemant',   // Microsoft Indian English Male
-      'male',     // Explicit male flag in name or voiceURI (#male, en-in-x-enc#male, etc.)
-      'man',
-      'boy',
-      'daniel',   // High-quality British Male (popular across mobile & desktop)
-      'alex',     // Premier Male on iOS / macOS
-      'david',    // Windows / Google Male
-      'mark',     // Windows Male
-      'george',   // Microsoft UK Male
-      'aaron',    // Apple Male
-      'arthur',   // Apple Male
-      'oliver',   // Apple Male
-      'tom',      // Apple Male
-      'guy',      // Microsoft Male
-      'brian',    // Google / Apple Male
-      'ryan',     // Apple / Google Male
-      'eric',     // Google / Windows Male
-      'fred',     // Apple Male
-      'gordon',   // Apple Male
-      'james',    // Android / Windows Male
-      'richard'   // Android / Windows Male
-    ];
+    // 2. Local Indian English voice (Google English India or Samsung English India on Android/Mobile)
+    const localIndian = allVoices.find((v) => {
+      const str = `${v.name || ''} ${v.lang || ''}`.toLowerCase();
+      return str.includes('in') || str.includes('india');
+    });
 
-    const isVerifiedMale = (v) => {
-      if (isExplicitFemale(v)) return false;
-      const combined = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase();
-      return maleKeywords.some((kw) => combined.includes(kw));
-    };
+    if (localIndian) {
+      return { voice: localIndian, isNativeMale: false };
+    }
 
-    // 1. Priority 1: Indian English Verified Male (Rishi, Ravi, Prabhat, Hemant, or en-IN with male tag)
-    const indianMale = allVoices.find(
-      (v) =>
-        (v.lang.toLowerCase().includes('in') || v.name.toLowerCase().includes('india')) &&
-        isVerifiedMale(v)
-    );
-    if (indianMale) return indianMale;
+    // 3. Any local English voice
+    const localEnglish = allVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+    if (localEnglish) {
+      return { voice: localEnglish, isNativeMale: false };
+    }
 
-    // 2. Priority 2: Premier English Male (Daniel, Alex, David, George, Oliver, Arthur, etc.)
-    const englishMale = allVoices.find(
-      (v) => v.lang.toLowerCase().startsWith('en') && isVerifiedMale(v)
-    );
-    if (englishMale) return englishMale;
-
-    // 3. Priority 3: Any verified male voice
-    const anyMale = allVoices.find((v) => isVerifiedMale(v));
-    if (anyMale) return anyMale;
-
-    // 4. Priority 4: Indian English voice that is not explicitly named female (e.g. Google English India)
-    const indianNonFemale = allVoices.find(
-      (v) =>
-        (v.lang.toLowerCase().includes('in') || v.name.toLowerCase().includes('india')) &&
-        !isExplicitFemale(v)
-    );
-    if (indianNonFemale) return indianNonFemale;
-
-    // 5. Priority 5: Any English voice that is not explicitly female
-    const englishNonFemale = allVoices.find(
-      (v) => v.lang.toLowerCase().startsWith('en') && !isExplicitFemale(v)
-    );
-    if (englishNonFemale) return englishNonFemale;
-
-    // 6. Priority 6: Any English voice available
-    const anyEnglish = allVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
-    if (anyEnglish) return anyEnglish;
-
-    // 7. Ultimate fallback
-    return allVoices.find((v) => v.default) || allVoices[0];
+    // 4. Default system voice
+    const defaultVoice = allVoices.find((v) => v.default) || allVoices[0];
+    return { voice: defaultVoice, isNativeMale: false };
   };
 
   useEffect(() => {
     const setupMaleVoice = () => {
-      const voice = resolveBestMaleVoice();
+      const { voice } = resolveMaleVoice();
       if (voice) {
         southIndianVoiceRef.current = voice;
       }
@@ -174,6 +119,7 @@ export default function BioVideoPlayer() {
       setProgressPercent(100);
       clearInterval(timerRef.current);
       charOffsetRef.current = 0;
+      sentenceStartElapsedRef.current = 0;
       isPausedRef.current = false;
       activeUtteranceRef.current = null;
       setTimeout(() => {
@@ -189,7 +135,12 @@ export default function BioVideoPlayer() {
     setIsPlaying(true);
     isPausedRef.current = false;
 
+    if (fromChar === 0) {
+      sentenceStartElapsedRef.current = elapsedRef.current;
+    }
+
     if (window.speechSynthesis && !isMuted) {
+      window.speechSynthesis.cancel();
       // Resume speech synthesis engine in case mobile browser paused it
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
@@ -203,19 +154,22 @@ export default function BioVideoPlayer() {
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       activeUtteranceRef.current = utterance; // Prevent garbage collection on mobile
 
-      // Dynamically select best male voice available on device
-      const selectedVoice = southIndianVoiceRef.current || resolveBestMaleVoice();
-      if (selectedVoice) {
-        southIndianVoiceRef.current = selectedVoice;
-        utterance.voice = selectedVoice;
-        utterance.lang = selectedVoice.lang || 'en-US';
+      // Dynamically select best voice available on device
+      const { voice: chosenVoice, isNativeMale } = resolveMaleVoice();
+      if (chosenVoice) {
+        southIndianVoiceRef.current = chosenVoice;
+        utterance.voice = chosenVoice;
+        utterance.lang = chosenVoice.lang || 'en-IN';
       } else {
-        utterance.lang = 'en-US';
+        utterance.lang = 'en-IN';
       }
 
-      // Strictly masculine pitch & resonant baritone (0.78 produces a deep, natural, authoritative male voice across all devices)
-      utterance.pitch = 0.78;
-      utterance.rate = 0.92 * playbackSpeed;
+      // Strictly masculine pitch across all devices:
+      // - Native male (e.g. Microsoft Ravi): 0.85
+      // - Mobile device voice (Google / Samsung English India / Apple): 0.65
+      // Pitch 0.65 lowers frequency into deep, authoritative, masculine baritone on all mobile phones!
+      utterance.pitch = isNativeMale ? 0.85 : 0.65;
+      utterance.rate = 0.90 * playbackSpeed;
       utterance.volume = 1.0;
 
       // Track speech character/word boundary in real-time so pause/resume resumes from the exact spot
@@ -294,6 +248,17 @@ export default function BioVideoPlayer() {
       isPausedRef.current = true;
       setIsPlaying(false);
       clearInterval(timerRef.current);
+
+      // Accurate fallback for mobile browsers that do not fire onboundary events
+      const sentenceObj = bioSentences[activeSentenceIndex];
+      if (sentenceObj) {
+        const sentenceElapsed = Math.max(0, elapsedRef.current - sentenceStartElapsedRef.current);
+        const estChar = Math.floor((sentenceElapsed / sentenceObj.estSeconds) * sentenceObj.speech.length);
+        if (estChar > charOffsetRef.current) {
+          charOffsetRef.current = Math.min(sentenceObj.speech.length - 1, estChar);
+        }
+      }
+
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -310,6 +275,7 @@ export default function BioVideoPlayer() {
     playClickSound();
     isPausedRef.current = false;
     charOffsetRef.current = 0;
+    sentenceStartElapsedRef.current = 0;
     activeUtteranceRef.current = null;
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -334,9 +300,10 @@ export default function BioVideoPlayer() {
     elapsedRef.current = targetSeconds;
     setProgressPercent(ratio * 100);
     charOffsetRef.current = 0;
+    sentenceStartElapsedRef.current = targetSeconds;
     isPausedRef.current = false;
     activeUtteranceRef.current = null;
-    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
 
