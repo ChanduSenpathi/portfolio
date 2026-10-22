@@ -94,7 +94,7 @@ export default function InteractiveTerminal({ isOpen, onClose, onThemeChange, cu
       newHistory.push({
         type: 'response',
         text: `🏛️ ARCHITECTURAL HIGHLIGHTS:
-  1. IngenAI 360: Next.js 14 App Router + Server Components + Prisma ORM + PostgreSQL.
+  1. IngenXAI 360: Next.js 14 App Router + Server Components + Prisma ORM + PostgreSQL.
   2. Aditya Birla: Single React SPA with 5 independent role dashboards, strict Route Guards & Formik/Yup state machines.
   3. Kinemeric Hub: Dynamic code-splitting & route lazy loading, reducing bundle size by 35%, with Redux Toolkit slices.
   4. AMH: Standardized UI pattern library & atomic design system with 100% TypeScript.`

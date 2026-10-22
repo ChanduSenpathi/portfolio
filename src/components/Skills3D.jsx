@@ -51,20 +51,17 @@ export default function Skills3D() {
 
   const architectures = {
     nextjs: {
-      title: 'Enterprise AI App Router & Prisma ORM',
+      title: 'Enterprise AI App Router & Server Actions',
       project: 'IngenXAI 360',
       description:
-        'Next.js 14 server components fetching streaming LLM completions, combined with Prisma ORM querying PostgreSQL for instantaneous user prompt caching.',
-      codeSnippet: `// IngenXAI 360 - App Router Server Action with Prisma
+        'Next.js 14 server components fetching streaming LLM completions, combined with PostgreSQL querying for instantaneous user prompt caching.',
+      codeSnippet: `// IngenXAI 360 - App Router Server Action
 export async function streamAIQuery(prompt: string, userId: string) {
   'use server';
   const session = await verifyAuthToken(userId);
   if (!session) throw new UnauthorizedError();
 
-  const userContext = await prisma.userProfile.findUnique({
-    where: { id: userId },
-    include: { preferences: true }
-  });
+  const userContext = await getUserProfileContext(userId);
 
   return streamEnterpriseAIResponse({
     prompt,

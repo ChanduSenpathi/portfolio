@@ -269,7 +269,7 @@ export default function Hero({ onOpenTerminal, onOpenContact, onTriggerBurst }) 
           }`}
         >
           <a
-            href="#skills"
+            href="#bio-video"
             onClick={() => playClickSound()}
             className="flex flex-col items-center gap-1 px-4 py-2 rounded-full bg-slate-950/85 border border-white/15 backdrop-blur-md text-[11px] font-mono tracking-wider text-slate-300 hover:text-cyan-400 hover:border-cyan-500/50 transition-all shadow-xl shadow-black/60 animate-bounce"
           >

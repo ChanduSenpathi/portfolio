@@ -20,271 +20,165 @@ export default function BioVideoPlayer() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const southIndianVoiceRef = useRef(null);
-  const activeUtteranceRef = useRef(null);
-  const charOffsetRef = useRef(0);
-  const sentenceStartElapsedRef = useRef(0);
-  const isPausedRef = useRef(false);
 
-  // Exact 3-sentence executive bio (under 22 seconds total)
+  // Exact 2-sentence executive bio (22.91s total master audio)
   const bioSentences = [
     {
       id: 0,
       speech: "Hello, I am Chandu Senapathi, a Frontend Developer with 5 years of experience building scalable enterprise web applications at Neosoft Technologies.",
       caption: "Hello, I am Chandu Senapathi, a Frontend Developer with 5 years of experience building scalable enterprise web applications at Neosoft Technologies.",
-      estSeconds: 7.5
+      audioSrc: "/audio/bio-0.wav",
+      duration: 10.41,
+      startTime: 0
     },
     {
       id: 1,
       speech: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenXAI 360 and multi-role systems for Birla Estates.",
       caption: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenXAI 360 and multi-role systems for Birla Estates.",
-      estSeconds: 7.5
-    },
-    {
-      id: 2,
-      speech: "My office location is Pune and my current location is Visakhapatnam. I am open to relocation and available for immediate frontend developer opportunities.",
-      caption: "My office location is Pune and my current location is Visakhapatnam. I am open to relocation, and available for immediate frontend developer opportunities.",
-      estSeconds: 7.0
+      audioSrc: "/audio/bio-1.wav",
+      duration: 12.50,
+      startTime: 10.41
     }
   ];
 
-  const TOTAL_DURATION = 35; // Generous 35s duration ensuring audio never gets cut off
+  const TOTAL_DURATION = 22.91; // Exact combined duration of master audio
   const elapsedRef = useRef(0);
-  const timerRef = useRef(null);
+  const audioRef = useRef(null);
+  const activeIndexRef = useRef(0);
 
-  // Dynamic voice resolver: 100% reliable local voice playback on every mobile and desktop device
-  const resolveMaleVoice = () => {
-    if (!window.speechSynthesis) return { voice: null, isNativeMale: false };
-    const allVoices = window.speechSynthesis.getVoices() || [];
-    if (!allVoices || allVoices.length === 0) return { voice: null, isNativeMale: false };
-
-    // 1. Native Indian Male voices on desktop or supported devices (Microsoft Ravi, Prabhat, Hemant on Windows, Rishi on iOS/Mac)
-    const indianMale = allVoices.find((v) => {
-      const str = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase();
-      const isIndian = v.lang.toLowerCase().includes('in') || str.includes('india');
-      const hasMaleName =
-        str.includes('ravi') ||
-        str.includes('prabhat') ||
-        str.includes('hemant') ||
-        str.includes('rishi') ||
-        str.includes('#male') ||
-        (str.includes('male') && !str.includes('female'));
-      return isIndian && hasMaleName;
-    });
-
-    if (indianMale) {
-      return { voice: indianMale, isNativeMale: true };
-    }
-
-    // 2. Local Indian English voice (Google English India or Samsung English India on Android/Mobile)
-    const localIndian = allVoices.find((v) => {
-      const str = `${v.name || ''} ${v.lang || ''}`.toLowerCase();
-      return str.includes('in') || str.includes('india');
-    });
-
-    if (localIndian) {
-      return { voice: localIndian, isNativeMale: false };
-    }
-
-    // 3. Any local English voice
-    const localEnglish = allVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
-    if (localEnglish) {
-      return { voice: localEnglish, isNativeMale: false };
-    }
-
-    // 4. Default system voice
-    const defaultVoice = allVoices.find((v) => v.default) || allVoices[0];
-    return { voice: defaultVoice, isNativeMale: false };
-  };
-
+  // Initialize and manage high-fidelity HTML5 Audio engine
+  // Guarantees strictly male voice across ALL devices (Desktop, iPhone, Android, Samsung)
   useEffect(() => {
-    const setupMaleVoice = () => {
-      const { voice } = resolveMaleVoice();
-      if (voice) {
-        southIndianVoiceRef.current = voice;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audioRef.current = audio;
+
+    const handleTimeUpdate = () => {
+      if (!audioRef.current) return;
+      const currentSentence = bioSentences[activeIndexRef.current] || bioSentences[0];
+      const curTime = audioRef.current.currentTime || 0;
+      const totalElapsed = Math.min(TOTAL_DURATION, currentSentence.startTime + curTime);
+      elapsedRef.current = totalElapsed;
+      setProgressPercent(Math.min(100, (totalElapsed / TOTAL_DURATION) * 100));
+    };
+
+    const handleEnded = () => {
+      const nextIdx = activeIndexRef.current + 1;
+      if (nextIdx < bioSentences.length) {
+        playSentence(nextIdx, 0);
+      } else {
+        setIsPlaying(false);
+        setProgressPercent(100);
+        setTimeout(() => {
+          setActiveSentenceIndex(0);
+          activeIndexRef.current = 0;
+          setProgressPercent(0);
+          elapsedRef.current = 0;
+          if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.src = bioSentences[0].audioSrc;
+          }
+        }, 1200);
       }
     };
 
-    setupMaleVoice();
-    if (window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = setupMaleVoice;
-    }
+    const handleError = () => {
+      setIsPlaying(false);
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
+    };
   }, []);
 
-  // 100% Exact Speech & Subtitle Synchronization Engine
-  // Supports resuming modulation and words from the exact position paused
-  const playSentence = (index, fromChar = 0) => {
+  // Exact Audio & Subtitle Synchronization Engine
+  // Seamlessly starts or resumes from exact millisecond offset
+  const playSentence = (index, startOffset = 0) => {
     if (index >= bioSentences.length) {
       setIsPlaying(false);
       setProgressPercent(100);
-      clearInterval(timerRef.current);
-      charOffsetRef.current = 0;
-      sentenceStartElapsedRef.current = 0;
-      isPausedRef.current = false;
-      activeUtteranceRef.current = null;
       setTimeout(() => {
         setActiveSentenceIndex(0);
+        activeIndexRef.current = 0;
         setProgressPercent(0);
         elapsedRef.current = 0;
       }, 1200);
       return;
     }
 
-    // Set subtitle to this sentence immediately
     setActiveSentenceIndex(index);
+    activeIndexRef.current = index;
     setIsPlaying(true);
-    isPausedRef.current = false;
 
-    if (fromChar === 0) {
-      sentenceStartElapsedRef.current = elapsedRef.current;
+    const sentenceObj = bioSentences[index];
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const currentSrc = audio.src ? new URL(audio.src, window.location.href).pathname : '';
+    if (currentSrc !== sentenceObj.audioSrc) {
+      audio.src = sentenceObj.audioSrc;
+      audio.currentTime = startOffset || 0;
+    } else if (startOffset > 0) {
+      audio.currentTime = startOffset;
     }
 
-    if (window.speechSynthesis && !isMuted) {
-      window.speechSynthesis.cancel();
-      // Resume speech synthesis engine in case mobile browser paused it
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+    audio.playbackRate = playbackSpeed;
+    audio.muted = isMuted;
 
-      const sentenceObj = bioSentences[index];
-      const validFrom = Math.max(0, Math.min(fromChar, sentenceObj.speech.length - 1));
-      const textToSpeak = validFrom > 0 ? sentenceObj.speech.slice(validFrom) : sentenceObj.speech;
-      charOffsetRef.current = validFrom;
-
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      activeUtteranceRef.current = utterance; // Prevent garbage collection on mobile
-
-      // Dynamically select best voice available on device
-      const { voice: chosenVoice, isNativeMale } = resolveMaleVoice();
-      if (chosenVoice) {
-        southIndianVoiceRef.current = chosenVoice;
-        utterance.voice = chosenVoice;
-        utterance.lang = chosenVoice.lang || 'en-IN';
-      } else {
-        utterance.lang = 'en-IN';
-      }
-
-      // Strictly masculine pitch across all devices:
-      // - Native male (e.g. Microsoft Ravi): 0.85
-      // - Mobile device voice (Google / Samsung English India / Apple): 0.65
-      // Pitch 0.65 lowers frequency into deep, authoritative, masculine baritone on all mobile phones!
-      utterance.pitch = isNativeMale ? 0.85 : 0.65;
-      utterance.rate = 0.90 * playbackSpeed;
-      utterance.volume = 1.0;
-
-      // Track speech character/word boundary in real-time so pause/resume resumes from the exact spot
-      utterance.onboundary = (e) => {
-        if (typeof e.charIndex === 'number') {
-          charOffsetRef.current = validFrom + e.charIndex;
-        }
-      };
-
-      // Trigger next sentence the EXACT millisecond this sentence finishes!
-      utterance.onend = () => {
-        activeUtteranceRef.current = null;
-        // If pause was requested, browser cancel() may trigger onend - ignore if paused
-        if (isPausedRef.current) return;
-
-        charOffsetRef.current = 0;
-        const nextIndex = index + 1;
-        if (nextIndex < bioSentences.length) {
-          playSentence(nextIndex, 0); // Speaks next sentence and updates subtitle in lockstep
-        } else {
-          // Voice has completely finished speaking the final sentence!
-          setIsPlaying(false);
-          setProgressPercent(100);
-          clearInterval(timerRef.current);
-          setTimeout(() => {
-            setActiveSentenceIndex(0);
-            setProgressPercent(0);
-            elapsedRef.current = 0;
-          }, 1500);
-        }
-      };
-
-      utterance.onerror = (e) => {
-        activeUtteranceRef.current = null;
-        if (e.error !== 'canceled' && !isPausedRef.current) {
-          setIsPlaying(false);
-        }
-      };
-
-      window.speechSynthesis.speak(utterance);
-    }
+    audio.play().catch(() => {
+      setIsPlaying(false);
+    });
   };
 
-  // Smooth real-time progress bar (Glides linearly, never terminates before audio finishes)
-  useEffect(() => {
-    if (isPlaying) {
-      const stepMs = 50;
-      const stepSec = (stepMs / 1000) * playbackSpeed;
-
-      timerRef.current = setInterval(() => {
-        elapsedRef.current += stepSec;
-        // Cap at 95% while voice is still speaking, jumps to 100% ONLY when voice actually completes
-        const pct = Math.min(95, (elapsedRef.current / TOTAL_DURATION) * 100);
-        setProgressPercent(pct);
-      }, stepMs);
-    } else {
-      clearInterval(timerRef.current);
-    }
-
-    return () => clearInterval(timerRef.current);
-  }, [isPlaying, playbackSpeed]);
-
-  // Main Play / Pause Handler with instant resume from exact word position
+  // Main Play / Pause Handler with instant millisecond resume
   const handlePlayToggle = () => {
     playClickSound();
 
-    // Mobile audio session unlock for Web Speech API
-    try {
-      if (window.speechSynthesis && window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } catch {}
+    const audio = audioRef.current;
+    if (!audio) return;
 
     if (isPlaying) {
       // Pause
-      isPausedRef.current = true;
+      audio.pause();
       setIsPlaying(false);
-      clearInterval(timerRef.current);
-
-      // Accurate fallback for mobile browsers that do not fire onboundary events
-      const sentenceObj = bioSentences[activeSentenceIndex];
-      if (sentenceObj) {
-        const sentenceElapsed = Math.max(0, elapsedRef.current - sentenceStartElapsedRef.current);
-        const estChar = Math.floor((sentenceElapsed / sentenceObj.estSeconds) * sentenceObj.speech.length);
-        if (estChar > charOffsetRef.current) {
-          charOffsetRef.current = Math.min(sentenceObj.speech.length - 1, estChar);
-        }
-      }
-
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      activeUtteranceRef.current = null;
     } else {
-      // Resume from current active sentence and exact character/word offset
-      isPausedRef.current = false;
-      playSentence(activeSentenceIndex, charOffsetRef.current);
+      // Resume from current exact position
+      const currentSentence = bioSentences[activeSentenceIndex] || bioSentences[0];
+      const currentSrc = audio.src ? new URL(audio.src, window.location.href).pathname : '';
+      if (currentSrc !== currentSentence.audioSrc) {
+        audio.src = currentSentence.audioSrc;
+      }
+      audio.playbackRate = playbackSpeed;
+      audio.muted = isMuted;
+      audio.play().then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        setIsPlaying(false);
+      });
     }
   };
 
   // Replay from beginning
   const handleRestart = () => {
     playClickSound();
-    isPausedRef.current = false;
-    charOffsetRef.current = 0;
-    sentenceStartElapsedRef.current = 0;
-    activeUtteranceRef.current = null;
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = bioSentences[0].audioSrc;
     }
     setActiveSentenceIndex(0);
+    activeIndexRef.current = 0;
     setProgressPercent(0);
     elapsedRef.current = 0;
     setIsPlaying(false);
-    clearInterval(timerRef.current);
     setTimeout(() => {
       playSentence(0, 0);
     }, 120);
@@ -299,28 +193,28 @@ export default function BioVideoPlayer() {
 
     elapsedRef.current = targetSeconds;
     setProgressPercent(ratio * 100);
-    charOffsetRef.current = 0;
-    sentenceStartElapsedRef.current = targetSeconds;
-    isPausedRef.current = false;
-    activeUtteranceRef.current = null;
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
 
     // Determine sentence at that time position
     let targetIdx = 0;
-    if (targetSeconds < 7.5) {
+    let sentenceOffset = 0;
+    if (targetSeconds < 10.41) {
       targetIdx = 0;
-    } else if (targetSeconds < 15.0) {
-      targetIdx = 1;
+      sentenceOffset = targetSeconds;
     } else {
-      targetIdx = 2;
+      targetIdx = 1;
+      sentenceOffset = Math.min(12.50, targetSeconds - 10.41);
     }
 
     if (isPlaying) {
-      playSentence(targetIdx, 0);
+      playSentence(targetIdx, sentenceOffset);
     } else {
       setActiveSentenceIndex(targetIdx);
+      activeIndexRef.current = targetIdx;
+      const audio = audioRef.current;
+      if (audio) {
+        audio.src = bioSentences[targetIdx].audioSrc;
+        audio.currentTime = sentenceOffset;
+      }
     }
   };
 
@@ -329,21 +223,23 @@ export default function BioVideoPlayer() {
     playClickSound();
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
-    if (nextMuted && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
+    if (audioRef.current) {
+      audioRef.current.muted = nextMuted;
     }
   };
 
-  useEffect(() => {
-    return () => {
-      clearInterval(timerRef.current);
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-    };
-  }, []);
+  // Playback speed handler
+  const handleSpeedChange = (speed) => {
+    playClickSound();
+    setPlaybackSpeed(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  };
 
   const currentSecondsFormatted = Math.floor(elapsedRef.current);
-  const formattedTime = `0:${currentSecondsFormatted < 10 ? '0' : ''}${currentSecondsFormatted} / 0:${TOTAL_DURATION}`;
+  const totalSecondsFormatted = Math.floor(TOTAL_DURATION);
+  const formattedTime = `0:${currentSecondsFormatted < 10 ? '0' : ''}${currentSecondsFormatted} / 0:${totalSecondsFormatted}`;
 
   return (
     <section id="bio-video" className="relative py-20 z-10 w-full">
@@ -484,7 +380,7 @@ export default function BioVideoPlayer() {
                     Flagship Systems
                   </div>
                   <div className="text-slate-300">
-                    IngenAI 360 & Birla Estates
+                    IngenXAI 360 & Birla Estates
                   </div>
                 </div>
               </div>
@@ -576,13 +472,7 @@ export default function BioVideoPlayer() {
                 {[1, 1.25, 1.5].map((speed) => (
                   <button
                     key={speed}
-                    onClick={() => {
-                      playClickSound();
-                      setPlaybackSpeed(speed);
-                      if (isPlaying) {
-                        playSentence(activeSentenceIndex);
-                      }
-                    }}
+                    onClick={() => handleSpeedChange(speed)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors ${playbackSpeed === speed
                         ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold'
                         : 'bg-white/5 text-slate-400 hover:text-white'

@@ -85,14 +85,7 @@ export const skillsData = {
       description: "RESTful API development, middleware, auth verification, streaming endpoints.",
       highlight: "Backend services integration and microservice endpoints"
     },
-    {
-      name: "Prisma ORM",
-      category: "backend",
-      level: 84,
-      icon: "HardDrive",
-      description: "Data modeling, schema migrations, complex joins, type-safe queries.",
-      highlight: "Engineered data layer for IngenAI 360 platform"
-    },
+
     {
       name: "PostgreSQL & MongoDB",
       category: "backend",
