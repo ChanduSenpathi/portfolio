@@ -21,6 +21,8 @@ export default function BioVideoPlayer() {
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const southIndianVoiceRef = useRef(null);
+  const charOffsetRef = useRef(0);
+  const isPausedRef = useRef(false);
 
   // Exact 3-sentence executive bio (under 22 seconds total)
   const bioSentences = [
@@ -32,8 +34,8 @@ export default function BioVideoPlayer() {
     },
     {
       id: 1,
-      speech: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenAI 360 and multi-role systems for Birla Estates.",
-      caption: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenAI 360 and multi-role systems for Birla Estates.",
+      speech: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenXAI 360 and multi-role systems for Birla Estates.",
+      caption: "I specialize in React, Next.js, and TypeScript, and have engineered enterprise AI platforms like IngenXAI 360 and multi-role systems for Birla Estates.",
       estSeconds: 7.5
     },
     {
@@ -48,49 +50,131 @@ export default function BioVideoPlayer() {
   const elapsedRef = useRef(0);
   const timerRef = useRef(null);
 
-  // Exclusively Select and Lock in the South Indian English Male Voice
+  // Exclusively Select and Guarantee a Male Voice across All Devices (Desktop, Android, iOS Safari, Samsung)
   useEffect(() => {
-    const setupSouthIndianVoice = () => {
+    const setupMaleVoice = () => {
       if (!window.speechSynthesis) return;
       const allVoices = window.speechSynthesis.getVoices();
+      if (!allVoices || allVoices.length === 0) return;
 
-      // 1. Prioritize Indian English voices (en-IN)
-      const indianVoices = allVoices.filter(
+      // Female voice identifiers to strictly reject across all platforms
+      const femaleKeywords = [
+        'female', 'woman', 'girl',
+        'veena', 'sangeeta', 'priya', 'kavya', 'ananya', 'heera', 'lekha', 'neerja',
+        'shruti', 'pooja', 'aditi', 'zira', 'samantha', 'victoria', 'karen', 'fiona',
+        'tessa', 'serena', 'hazel', 'susan', 'moira', 'catherine', 'jenny', 'aria',
+        'ava', 'allison', 'stephanie', 'siri', 'helena', 'laura', 'alice', 'sara',
+        'sarah', 'zoe', 'joana', 'luciana', 'kyoko', 'yuna', 'amelie', 'anna',
+        'clara', 'emma', 'olivia', 'sophia', 'isabella', 'charlotte', 'amelia',
+        'mia', 'harper', 'evelyn', 'abigail', 'emily', 'elizabeth', 'mila', 'ella',
+        'avery', 'sofia', 'camila', 'scarlett', 'madison', 'luna', 'grace', 'chloe',
+        'penelope', 'layla', 'riley', 'zoey', 'nora', 'lily', 'eleanor', 'hannah',
+        'lillian', 'addison', 'aubrey', 'ellie', 'stella', 'natalie', 'leah', 'violet',
+        'aurora', 'savannah', 'audrey', 'brooklyn', 'bella', 'claire', 'skylar'
+      ];
+
+      // Explicit mobile default voices known to be female despite lacking the keyword "female"
+      const forbiddenMobileFemaleDefaults = [
+        'google english (india)',
+        'google english india',
+        'samsung english (india)',
+        'samsung english india'
+      ];
+
+      const isKnownFemale = (v) => {
+        const name = (v.name || '').toLowerCase();
+        const uri = (v.voiceURI || '').toLowerCase();
+        const combined = `${name} ${uri}`;
+
+        if (forbiddenMobileFemaleDefaults.some((f) => name === f || uri === f)) {
+          // If it doesn't explicitly have a male tag, it is female
+          if (!combined.includes('male') && !combined.includes('man')) return true;
+        }
+
+        return femaleKeywords.some((kw) => combined.includes(kw));
+      };
+
+      // Explicit male keywords across Windows, Mac, iOS, Android (Google TTS), Samsung, Linux
+      const maleKeywords = [
+        'rishi',    // iOS / macOS premier Indian English Male
+        'ravi',     // Microsoft Indian English Male
+        'prabhat',  // Microsoft Indian English Male
+        'hemant',   // Microsoft Indian English Male
+        'male',     // Explicit male flag in name or voiceURI (#male, en-in-x-enc#male, etc.)
+        'man',
+        'boy',
+        'daniel',   // High-quality British Male (popular across mobile & desktop)
+        'alex',     // Premier Male on iOS / macOS
+        'david',    // Windows / Google Male
+        'mark',     // Windows Male
+        'george',   // Microsoft UK Male
+        'aaron',    // Apple Male
+        'arthur',   // Apple Male
+        'oliver',   // Apple Male
+        'tom',      // Apple Male
+        'guy',      // Microsoft Male
+        'brian',    // Google / Apple Male
+        'ryan',     // Apple / Google Male
+        'eric',     // Google / Windows Male
+        'fred',     // Apple Male
+        'gordon',   // Apple Male
+        'james',    // Android / Windows Male
+        'richard'   // Android / Windows Male
+      ];
+
+      const isVerifiedMale = (v) => {
+        if (isKnownFemale(v)) return false;
+        const combined = `${v.name || ''} ${v.voiceURI || ''}`.toLowerCase();
+        return maleKeywords.some((kw) => combined.includes(kw));
+      };
+
+      // 1. First priority: Indian English Male (e.g. Rishi on iOS/Mac, Ravi/Prabhat/Hemant on Windows, Google en-IN Male on Android)
+      const indianMale = allVoices.find(
         (v) =>
-          v.lang.toLowerCase().includes('in') ||
-          v.name.toLowerCase().includes('india') ||
-          v.name.toLowerCase().includes('ravi')
+          (v.lang.toLowerCase().includes('in') || v.name.toLowerCase().includes('india')) &&
+          isVerifiedMale(v)
       );
 
-      // 2. Select Indian Male Voice (e.g. Microsoft Ravi or Google English India)
-      const indianMale =
-        indianVoices.find(
-          (v) =>
-            v.name.toLowerCase().includes('ravi') ||
-            v.name.toLowerCase().includes('prabhat') ||
-            v.name.toLowerCase().includes('hemant') ||
-            v.name.toLowerCase().includes('male')
-        ) ||
-        indianVoices[0] ||
-        allVoices.find((v) => v.lang.startsWith('en')) ||
+      // 2. Second priority: Any verified English Male voice (e.g. Daniel, Alex, David, George, Aaron, Oliver)
+      const englishMale = allVoices.find(
+        (v) => v.lang.toLowerCase().startsWith('en') && isVerifiedMale(v)
+      );
+
+      // 3. Third priority: Any verified male voice
+      const anyMale = allVoices.find((v) => isVerifiedMale(v));
+
+      // 4. Safe fallback: any English voice that is strictly not known female
+      const safeNonFemale = allVoices.find(
+        (v) => v.lang.toLowerCase().startsWith('en') && !isKnownFemale(v)
+      );
+
+      // 5. Ultimate fallback
+      const chosenVoice =
+        indianMale ||
+        englishMale ||
+        anyMale ||
+        safeNonFemale ||
+        allVoices.find((v) => !isKnownFemale(v)) ||
         allVoices[0];
 
-      southIndianVoiceRef.current = indianMale;
+      southIndianVoiceRef.current = chosenVoice;
     };
 
-    setupSouthIndianVoice();
+    setupMaleVoice();
     if (window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = setupSouthIndianVoice;
+      window.speechSynthesis.onvoiceschanged = setupMaleVoice;
     }
   }, []);
 
   // 100% Exact Speech & Subtitle Synchronization Engine
-  // Subtitle changes the exact millisecond the sentence starts, and tracking only ends when voice finishes
-  const playSentence = (index) => {
+  // Supports resuming modulation and words from the exact position paused
+  const playSentence = (index, fromChar = 0) => {
     if (index >= bioSentences.length) {
       setIsPlaying(false);
       setProgressPercent(100);
       clearInterval(timerRef.current);
+      charOffsetRef.current = 0;
+      isPausedRef.current = false;
       setTimeout(() => {
         setActiveSentenceIndex(0);
         setProgressPercent(0);
@@ -102,25 +186,50 @@ export default function BioVideoPlayer() {
     // Set subtitle to this sentence immediately
     setActiveSentenceIndex(index);
     setIsPlaying(true);
+    isPausedRef.current = false;
 
     if (window.speechSynthesis && !isMuted) {
       window.speechSynthesis.cancel();
-      const sentenceObj = bioSentences[index];
-      const utterance = new SpeechSynthesisUtterance(sentenceObj.speech);
+      // Resume speech synthesis engine in case mobile browser paused it
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
 
-      // Set South Indian English Voice & Authentic Cadence
+      const sentenceObj = bioSentences[index];
+      const validFrom = Math.max(0, Math.min(fromChar, sentenceObj.speech.length - 1));
+      const textToSpeak = validFrom > 0 ? sentenceObj.speech.slice(validFrom) : sentenceObj.speech;
+      charOffsetRef.current = validFrom;
+
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+
+      // Set Male Voice & Masculine Resonance
       if (southIndianVoiceRef.current) {
         utterance.voice = southIndianVoiceRef.current;
+        utterance.lang = southIndianVoiceRef.current.lang || 'en-IN';
+      } else {
+        utterance.lang = 'en-IN';
       }
-      utterance.lang = 'en-IN';
-      utterance.pitch = 0.90; // Warm South Indian male pitch
-      utterance.rate = 0.92 * playbackSpeed; // Measured South Indian cadence
+
+      // Strictly masculine pitch & resonant baritone (0.76 produces a deep, natural, authoritative male voice across all devices)
+      utterance.pitch = 0.76;
+      utterance.rate = 0.92 * playbackSpeed;
+
+      // Track speech character/word boundary in real-time so pause/resume resumes from the exact spot
+      utterance.onboundary = (e) => {
+        if (typeof e.charIndex === 'number') {
+          charOffsetRef.current = validFrom + e.charIndex;
+        }
+      };
 
       // Trigger next sentence the EXACT millisecond this sentence finishes!
       utterance.onend = () => {
+        // If pause was requested, browser cancel() may trigger onend - ignore if paused
+        if (isPausedRef.current) return;
+
+        charOffsetRef.current = 0;
         const nextIndex = index + 1;
         if (nextIndex < bioSentences.length) {
-          playSentence(nextIndex); // Speaks next sentence and updates subtitle in lockstep
+          playSentence(nextIndex, 0); // Speaks next sentence and updates subtitle in lockstep
         } else {
           // Voice has completely finished speaking the final sentence!
           setIsPlaying(false);
@@ -135,7 +244,7 @@ export default function BioVideoPlayer() {
       };
 
       utterance.onerror = (e) => {
-        if (e.error !== 'canceled') {
+        if (e.error !== 'canceled' && !isPausedRef.current) {
           setIsPlaying(false);
         }
       };
@@ -163,26 +272,30 @@ export default function BioVideoPlayer() {
     return () => clearInterval(timerRef.current);
   }, [isPlaying, playbackSpeed]);
 
-  // Main Play / Pause Handler with instant resume
+  // Main Play / Pause Handler with instant resume from exact word position
   const handlePlayToggle = () => {
     playClickSound();
 
     if (isPlaying) {
       // Pause
+      isPausedRef.current = true;
       setIsPlaying(false);
       clearInterval(timerRef.current);
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
     } else {
-      // Resume from current active sentence
-      playSentence(activeSentenceIndex);
+      // Resume from current active sentence and exact character/word offset
+      isPausedRef.current = false;
+      playSentence(activeSentenceIndex, charOffsetRef.current);
     }
   };
 
   // Replay from beginning
   const handleRestart = () => {
     playClickSound();
+    isPausedRef.current = false;
+    charOffsetRef.current = 0;
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -192,7 +305,7 @@ export default function BioVideoPlayer() {
     setIsPlaying(false);
     clearInterval(timerRef.current);
     setTimeout(() => {
-      playSentence(0);
+      playSentence(0, 0);
     }, 120);
   };
 
@@ -205,6 +318,8 @@ export default function BioVideoPlayer() {
 
     elapsedRef.current = targetSeconds;
     setProgressPercent(ratio * 100);
+    charOffsetRef.current = 0;
+    isPausedRef.current = false;
 
     // Determine sentence at that time position
     let targetIdx = 0;
@@ -217,7 +332,7 @@ export default function BioVideoPlayer() {
     }
 
     if (isPlaying) {
-      playSentence(targetIdx);
+      playSentence(targetIdx, 0);
     } else {
       setActiveSentenceIndex(targetIdx);
     }
