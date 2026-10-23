@@ -103,7 +103,7 @@ export default function Hero({ onOpenTerminal, onOpenContact, onTriggerBurst }) 
               </div>
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 text-cyan-400" />
-                <span>{personalInfo.location}</span>
+                <span>Office: {personalInfo.officeLocation}</span>
               </div>
             </div>
 
